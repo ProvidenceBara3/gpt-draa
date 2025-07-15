@@ -1,1 +1,10 @@
+# .gitignore
 venv/
+__pycache__/
+*.pyc
+*.log
+db.sqlite3
+*.sqlite3
+chroma_data/
+media/documents/
+.env

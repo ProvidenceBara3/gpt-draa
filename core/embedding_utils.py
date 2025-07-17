@@ -2,21 +2,10 @@ import os
 import fitz  # PyMuPDF
 import docx
 from sentence_transformers import SentenceTransformer
-import chromadb
-from chromadb.config import Settings
+from core.chroma_client import chroma_client, collection
 
 DOCUMENTS_PATH = 'media/documents/'
 EMBEDDING_MODEL = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
-
-
-
-chroma_client = chromadb.Client(Settings(
-    anonymized_telemetry=False,
-    persist_directory="chroma_data"  # or any consistent folder name
-))
-
-# chroma_client = chromadb.Client(Settings(anonymized_telemetry=False))
-collection = chroma_client.get_or_create_collection(name="legal_docs")
 
 def extract_text(file_path):
     if file_path.endswith('.pdf'):
@@ -37,11 +26,37 @@ def embed_and_store(file_name, language_code):
     chunks = [text[i:i+500] for i in range(0, len(text), 500)]
     embeddings = EMBEDDING_MODEL.encode(chunks)
 
+    embedded_ids = []
+
     for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
+        doc_id = f"{file_name}_{i}"
         collection.add(
             documents=[chunk],
             embeddings=[emb.tolist()],
-            ids=[f"{file_name}_{i}"],
+            ids=[doc_id],
             metadatas=[{"language": language_code}]
         )
+        print(f"✅ Added chunk ID: {doc_id} (first 100 chars): {chunk[:100]}...")
+
+        embedded_ids.append(doc_id)
+
+    print("\n✅ Finished embedding. Summary:")
+    print(f"📄 File: {file_name}")
+    print(f"🧩 Total Chunks Embedded: {len(chunks)}")
+    print(f"🗂️ Stored in Collection: legal_docs")
+    print(f"📁 ChromaDB Path: {os.path.abspath('chroma_data')}")
+    chroma_client.persist()  # ✅ Save to disk
     return f"✅ Embedded {len(chunks)} chunks from: {file_name}"
+
+# Optional: debug what's already in the DB
+def show_current_chunks():
+    results = collection.get(include=["documents", "metadatas"])  # ✅ FIXED: removed "ids"
+    ids = results.get("ids", [])  # ✅ Still accessible
+    print(f"📊 Current Chunks in DB: {len(ids)}")
+    
+    for i, doc_id in enumerate(ids):
+        preview = results["documents"][i][:100]
+        lang = results["metadatas"][i].get("language", "unknown")
+        print(f"🆔 {doc_id} | 🌍 {lang} | 📄 Preview: {preview}...")
+
+

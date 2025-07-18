@@ -1,0 +1,256 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Dashboard - GPT-DRAA{% endblock %}
+
+{% block content %}
+<div x-data="dashboard()" x-init="initDashboard()">
+    <div class="p-8">
+        
+        <!-- Page Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
+            <p class="text-gray-600 mt-2">Monitor your GPT-DRAA system performance and analytics</p>
+        </div>
+        
+        <!-- Loading State -->
+        <div x-show="loading" class="flex items-center justify-center h-64">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <span class="ml-3 text-gray-600">Loading dashboard data...</span>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div x-show="!loading" x-cloak class="space-y-8">
+            <!-- Overview Cards -->
+            <section id="overview" class="mb-8">
+                <h2 class="text-2xl font-bold text-gray-900 mb-6">System Overview</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    
+                    <!-- Total Queries Card -->
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-comments text-white text-sm"></i>
+                                </div>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">Total Queries</dt>
+                                    <dd class="text-3xl font-bold text-gray-900" x-text="stats.total_queries || '0'"></dd>
+                                </dl>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="flex items-center text-sm text-gray-600">
+                                <span class="text-green-600 font-medium">+12% </span>
+                                <span class="ml-1">vs last week</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Average Response Time Card -->
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-clock text-white text-sm"></i>
+                                </div>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">Avg Response Time</dt>
+                                    <dd class="text-3xl font-bold text-gray-900">
+                                        <span x-text="formatResponseTime(stats.last_day?.avg_response_time)"></span>
+                                    </dd>
+                                </dl>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="flex items-center text-sm text-gray-600">
+                                <span class="text-red-600 font-medium">+2.3s </span>
+                                <span class="ml-1">vs last week</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Average Relevance Card -->
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-bullseye text-white text-sm"></i>
+                                </div>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">Avg Relevance Score</dt>
+                                    <dd class="text-3xl font-bold text-gray-900">
+                                        <span x-text="(stats.last_day?.avg_relevance || 0).toFixed(3)"></span>
+                                    </dd>
+                                </dl>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="flex items-center text-sm text-gray-600">
+                                <span class="text-green-600 font-medium">+0.008 </span>
+                                <span class="ml-1">vs last week</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Health Card -->
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-heart text-white text-sm"></i>
+                                </div>
+                            </div>
+                            <div class="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">System Health</dt>
+                                    <dd class="text-3xl font-bold text-green-600">
+                                        <span x-text="getSystemHealth()"></span>
+                                    </dd>
+                                </dl>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="flex items-center text-sm text-gray-600">
+                                <div class="h-2 w-2 bg-green-400 rounded-full mr-2"></div>
+                                <span>All systems operational</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Performance Charts Section -->
+            <section id="performance" class="mb-8">
+                <h2 class="text-2xl font-bold text-gray-900 mb-6">Performance Metrics</h2>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    
+                    <!-- Response Time Trend Chart -->
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900">Response Time Trend</h3>
+                        </div>
+                        <div class="h-64">
+                            <canvas id="responseTimeChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Query Volume Chart -->
+                    <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900">Query Volume Trend</h3>
+                        </div>
+                        <div class="h-64">
+                            <canvas id="queryVolumeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recent Queries -->
+            <section id="queries" class="mb-8">
+                <div class="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">Recent Queries</h3>
+                            <p class="text-sm text-gray-500 mt-1">Latest user interactions with detailed metrics</p>
+                        </div>
+                        <a href="/api/chat/" class="text-sm text-blue-600 hover:text-blue-800">View Chat</a>
+                    </div>
+                    
+                    <!-- Metrics Legend -->
+                    <div class="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                            <div class="flex items-center">
+                                <i class="fas fa-search text-gray-600 mr-2"></i>
+                                <span><strong>Context:</strong> ChromaDB document relevance (0-1)</span>
+                            </div>
+                            <div class="flex items-center">
+                                <i class="fas fa-star text-yellow-500 mr-2"></i>
+                                <span><strong>Rating:</strong> User feedback (1-5 stars)</span>
+                            </div>
+                            <div class="flex items-center">
+                                <i class="fas fa-redo text-gray-600 mr-2"></i>
+                                <span><strong>Regenerations:</strong> Response retry count</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="space-y-3 max-h-64 overflow-y-auto">
+                        <template x-for="query in recentQueries" :key="query.id">
+                            <div class="flex items-start space-x-3 p-3 hover:bg-gray-50 rounded-lg border border-gray-100">
+                                <div class="flex-shrink-0">
+                                    <div class="w-2 h-2 rounded-full mt-2" 
+                                         :class="query.avg_relevance_score > 0.05 ? 'bg-green-400' : 'bg-yellow-400'"></div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm text-gray-900 truncate" x-text="query.query_text"></p>
+                                    <div class="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2 text-xs">
+                                        <!-- Language -->
+                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                            <i class="fas fa-globe mr-1"></i>
+                                            <span x-text="getLanguageName(query.language)"></span>
+                                        </span>
+                                        
+                                        <!-- Response Time -->
+                                        <span class="inline-flex items-center text-gray-600">
+                                            <i class="fas fa-clock mr-1"></i>
+                                            <span x-text="formatResponseTime(query.response_time_ms)"></span>
+                                        </span>
+                                        
+                                        <!-- Context Relevance -->
+                                        <span class="inline-flex items-center text-gray-600" 
+                                              :title="'ChromaDB document context relevance: ' + (query.avg_relevance_score || 0).toFixed(3)">
+                                            <i class="fas fa-search mr-1"></i>
+                                            <span x-text="'Context: ' + (query.avg_relevance_score || 0).toFixed(3)"></span>
+                                        </span>
+                                        
+                                        <!-- User Rating -->
+                                        <span x-show="query.user_rating" 
+                                              class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                            <i class="fas fa-star mr-1"></i>
+                                            <span x-text="query.user_rating + '/5'"></span>
+                                        </span>
+                                        <span x-show="!query.user_rating" 
+                                              class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                            <i class="fas fa-star-o mr-1"></i>
+                                            No rating
+                                        </span>
+                                        
+                                        <!-- Regeneration Count -->
+                                        <span x-show="query.regeneration_count > 0" 
+                                              class="inline-flex items-center text-gray-500"
+                                              :title="'Response regenerated ' + query.regeneration_count + ' times'">
+                                            <i class="fas fa-redo mr-1"></i>
+                                            <span x-text="query.regeneration_count + 'x'"></span>
+                                        </span>
+                                        
+                                        <!-- Timestamp -->
+                                        <span class="inline-flex items-center text-gray-500">
+                                            <i class="fas fa-clock mr-1"></i>
+                                            <span x-text="formatTime(query.timestamp)"></span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('dashboard', dashboard);
+});
+</script>
+{% endblock %}

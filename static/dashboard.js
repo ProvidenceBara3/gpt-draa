@@ -62,7 +62,7 @@ function dashboard() {
                 this.loading = true;
                 
                 // Load real system stats from API
-                const statsResponse = await fetch(`${API_BASE}/api/monitoring/stats/`);
+                const statsResponse = await fetch(`${API_BASE}/api/api/monitoring/stats/`);
                 if (statsResponse.ok) {
                     const data = await statsResponse.json();
                     this.stats = data.stats || {};
@@ -73,7 +73,7 @@ function dashboard() {
                 }
 
                 // Load real dashboard data from API
-                const dashboardResponse = await fetch(`${API_BASE}/api/monitoring/dashboard/`);
+                const dashboardResponse = await fetch(`${API_BASE}/api/api/monitoring/dashboard/`);
                 if (dashboardResponse.ok) {
                     const dashboardData = await dashboardResponse.json();
                     this.recentQueries = dashboardData.recent_queries || [];
@@ -140,7 +140,7 @@ function dashboard() {
             try {
                 console.log("Loading embedding statistics...");
                 // Load real embedding stats from API
-                const response = await fetch(`${API_BASE}/api/monitoring/embedding-stats/`);
+                const response = await fetch(`${API_BASE}/api/api/monitoring/embeddings/`);
                 if (response.ok) {
                     this.embeddingStats = await response.json();
                     console.log('Embedding stats loaded:', this.embeddingStats);
@@ -169,7 +169,7 @@ function dashboard() {
         async loadPerformanceTrends() {
             try {
                 console.log("Loading performance trends...");
-                const response = await fetch(`${API_BASE}/api/monitoring/trends/`);
+                const response = await fetch(`${API_BASE}/api/api/monitoring/trends/`);
                 if (response.ok) {
                     this.performanceTrends = await response.json();
                     console.log("Performance trends loaded:", this.performanceTrends);
@@ -526,9 +526,9 @@ function fileUpload() {
                 for (let i = 0; i < this.selectedFiles.length; i++) {
                     const file = this.selectedFiles[i];
                     const formData = new FormData();
-                    formData.append('document', file);
+                    formData.append('file', file);
 
-                    const response = await fetch(`${API_BASE}/embed/`, {
+                    const response = await fetch(`${API_BASE}/api/embed/`, {
                         method: 'POST',
                         body: formData
                     });
@@ -620,7 +620,7 @@ function quickAsk() {
             this.contextCount = 0;
 
             try {
-                const response = await fetch(`${API_BASE}/ask/`, {
+                const response = await fetch(`${API_BASE}/api/ask/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -650,13 +650,16 @@ function quickAsk() {
 
 // Initialize dashboard when page loads
 document.addEventListener('DOMContentLoaded', function() {
-    // Add refresh button functionality
-    document.getElementById('refreshBtn').addEventListener('click', function() {
-        const dashboardData = window.Alpine ? Alpine.store('dashboard') : null;
-        if (dashboardData && dashboardData.refreshData) {
-            dashboardData.refreshData();
-        }
-    });
+    // Add refresh button functionality - check if element exists first
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', function() {
+            const dashboardData = window.Alpine ? Alpine.store('dashboard') : null;
+            if (dashboardData && dashboardData.refreshData) {
+                dashboardData.refreshData();
+            }
+        });
+    }
 
     // Add smooth scrolling for navigation
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
@@ -735,7 +738,8 @@ function chatInterface() {
             const userMessage = {
                 type: 'user',
                 content: this.currentMessage.trim(),
-                timestamp: new Date()
+                timestamp: new Date(),
+                status: 'sent'
             };
 
             this.chatMessages.push(userMessage);
@@ -753,7 +757,7 @@ function chatInterface() {
             });
 
             try {
-                const response = await fetch(`${API_BASE}/ask/`, {
+                const response = await fetch(`${API_BASE}/api/ask/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -772,7 +776,12 @@ function chatInterface() {
                         type: 'ai',
                         content: data.response,
                         timestamp: new Date(),
-                        contextCount: data.context_used ? data.context_used.length : 0
+                        contextCount: data.context_used ? data.context_used.length : 0,
+                        status: 'sent',
+                        rating: null,
+                        queryId: data.query_id, // Store query ID for feedback tracking
+                        regenerationCount: 0,
+                        suggestions: this.generateFollowUpSuggestions(data.response, prompt)
                     };
                     this.chatMessages.push(aiMessage);
                 } else {
@@ -780,7 +789,9 @@ function chatInterface() {
                         type: 'ai',
                         content: 'Sorry, I encountered an error while processing your question. Please try again.',
                         timestamp: new Date(),
-                        contextCount: 0
+                        contextCount: 0,
+                        status: 'error',
+                        suggestions: []
                     };
                     this.chatMessages.push(errorMessage);
                 }
@@ -791,7 +802,9 @@ function chatInterface() {
                     type: 'ai',
                     content: 'Sorry, I could not connect to the AI service. Please check your connection and try again.',
                     timestamp: new Date(),
-                    contextCount: 0
+                    contextCount: 0,
+                    status: 'error',
+                    suggestions: []
                 };
                 this.chatMessages.push(errorMessage);
             } finally {
@@ -804,6 +817,252 @@ function chatInterface() {
                     }
                 });
             }
+        },
+
+        // Copy message to clipboard
+        async copyMessage(content, message) {
+            console.log('Copy button clicked!', content, message); // Debug log
+            try {
+                await navigator.clipboard.writeText(content);
+                this.showNotification('Message copied to clipboard!', 'success');
+                
+                // Record the copy action
+                if (message.queryId) {
+                    await this.recordUserAction(message.queryId, 'copy', {
+                        content_length: content.length,
+                        action_timestamp: new Date().toISOString()
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to copy message:', err);
+                this.showNotification('Failed to copy message', 'error');
+            }
+        },
+
+        // Regenerate AI response
+        async regenerateResponse(messageIndex) {
+            const message = this.chatMessages[messageIndex];
+            if (message.type !== 'ai') return;
+
+            // Find the user message that triggered this response
+            let userPrompt = '';
+            for (let i = messageIndex - 1; i >= 0; i--) {
+                if (this.chatMessages[i].type === 'user') {
+                    userPrompt = this.chatMessages[i].content;
+                    break;
+                }
+            }
+
+            if (!userPrompt) return;
+
+            // Record regeneration action
+            if (message.queryId) {
+                await this.recordUserAction(message.queryId, 'regenerate', {
+                    original_response_length: message.content.length,
+                    regeneration_number: (message.regenerationCount || 0) + 1
+                });
+            }
+
+            // Mark as regenerating
+            message.status = 'sending';
+            message.regenerationCount = (message.regenerationCount || 0) + 1;
+            this.isTyping = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/ask/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        prompt: userPrompt,
+                        language: 'en'
+                    })
+                });
+
+                this.isTyping = false;
+
+                if (response.ok) {
+                    const data = await response.json();
+                    message.content = data.response;
+                    message.timestamp = new Date();
+                    message.status = 'sent';
+                    message.rating = null; // Reset rating
+                    message.queryId = data.query_id; // Update with new query ID
+                    message.suggestions = this.generateFollowUpSuggestions(data.response, userPrompt);
+                    
+                    this.showNotification('Response regenerated successfully!', 'success');
+                } else {
+                    message.status = 'error';
+                    this.showNotification('Failed to regenerate response', 'error');
+                }
+            } catch (error) {
+                console.error('Error regenerating response:', error);
+                message.status = 'error';
+                this.isTyping = false;
+                this.showNotification('Failed to regenerate response', 'error');
+            }
+        },
+
+        // Rate message with backend recording
+        async rateMessage(message, rating) {
+            console.log('Rate button clicked!', message, rating); // Debug log
+            const previousRating = message.rating;
+            message.rating = message.rating === rating ? null : rating;
+            
+            // Record rating in backend
+            if (message.queryId) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/monitoring/rate/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            query_id: message.queryId,
+                            user_rating: rating,
+                            feedback_type: 'rating'
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('Rating saved:', data);
+                        
+                        const feedbackText = rating === 'up' 
+                            ? 'Thank you for the positive feedback!' 
+                            : 'Thank you for the feedback. We\'ll work to improve our responses.';
+                        this.showNotification(feedbackText, 'success');
+                    } else {
+                        // Revert rating if backend save failed
+                        message.rating = previousRating;
+                        console.error('Rating request failed:', response.status, response.statusText);
+                        const responseText = await response.text();
+                        console.error('Response body:', responseText);
+                        this.showNotification('Failed to save rating', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error saving rating:', error);
+                    message.rating = previousRating;
+                    this.showNotification('Failed to save rating', 'error');
+                }
+            } else {
+                console.warn('No query ID available for rating');
+                const feedbackText = rating === 'up' 
+                    ? 'Thank you for the positive feedback!' 
+                    : 'Thank you for the feedback. We\'ll work to improve our responses.';
+                this.showNotification(feedbackText, 'info');
+            }
+        },
+
+        // Record user actions for analytics
+        async recordUserAction(queryId, actionType, details = {}) {
+            try {
+                await fetch(`${API_BASE}/api/monitoring/rate/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query_id: queryId,
+                        feedback_type: actionType,
+                        action_details: details
+                    })
+                });
+            } catch (error) {
+                console.error('Failed to record user action:', error);
+            }
+        },
+
+        // Ask follow-up question
+        async askFollowUp(suggestion, originalMessage) {
+            // Record follow-up action
+            if (originalMessage && originalMessage.queryId) {
+                await this.recordUserAction(originalMessage.queryId, 'follow_up', {
+                    suggestion_text: suggestion,
+                    suggestion_position: originalMessage.suggestions.indexOf(suggestion)
+                });
+            }
+            
+            this.currentMessage = suggestion;
+            this.sendMessage();
+        },
+
+        // Generate follow-up suggestions based on the response
+        generateFollowUpSuggestions(response, originalPrompt) {
+            const suggestions = [];
+            
+            // Digital rights related suggestions
+            if (response.toLowerCase().includes('digital rights') || originalPrompt.toLowerCase().includes('digital rights')) {
+                suggestions.push('What are the main challenges?');
+                suggestions.push('How can this be improved?');
+                suggestions.push('What are the legal frameworks?');
+            }
+            
+            // Africa-specific suggestions
+            if (response.toLowerCase().includes('africa') || originalPrompt.toLowerCase().includes('africa')) {
+                suggestions.push('Which African countries lead in this?');
+                suggestions.push('What are the regional differences?');
+                suggestions.push('What role do governments play?');
+            }
+            
+            // Accessibility suggestions
+            if (response.toLowerCase().includes('accessibility') || response.toLowerCase().includes('disabilities')) {
+                suggestions.push('What assistive technologies help?');
+                suggestions.push('How can barriers be removed?');
+                suggestions.push('What are best practices?');
+            }
+            
+            // Generic follow-ups
+            if (suggestions.length < 2) {
+                suggestions.push('Can you provide examples?');
+                suggestions.push('What are the next steps?');
+                suggestions.push('How does this impact communities?');
+            }
+            
+            return suggestions.slice(0, 3); // Limit to 3 suggestions
+        },
+
+        // Enhanced time formatting with relative time
+        formatEnhancedTime(date) {
+            const now = new Date();
+            const messageTime = new Date(date);
+            const diffMs = now - messageTime;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            
+            return messageTime.toLocaleString([], { 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+        },
+
+        // Show notification (you can enhance this with a toast library)
+        showNotification(message, type) {
+            // Simple console notification for now - you could enhance with toast UI
+            console.log(`${type.toUpperCase()}: ${message}`);
+            
+            // Create a simple toast notification
+            const toast = document.createElement('div');
+            toast.className = `fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-white text-sm font-medium transition-all duration-300 ${
+                type === 'success' ? 'bg-green-500' : 
+                type === 'error' ? 'bg-red-500' : 
+                'bg-blue-500'
+            }`;
+            toast.textContent = message;
+            
+            document.body.appendChild(toast);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
         },
 
         formatTime(date) {
@@ -824,9 +1083,28 @@ function documentManager() {
         uploadSuccess: false,
         embeddedCount: 0,
         totalChunks: 0,
+        documentStats: {},
+        showLanguageSelector: false,
+        showMetadataForm: false,
+        selectedLanguage: 'en',
+        documentMetadata: {
+            title: '',
+            author: '',
+            source: '',
+            publication_date: '',
+            category: 'other',
+            description: '',
+            tags: '',
+            document_type: 'other',
+            geographic_scope: '',
+            target_audience: ''
+        },
+        editingDocument: null,
+        showEditModal: false,
 
         init() {
             this.loadDocuments();
+            this.loadDocumentStats();
         },
 
         handleDrop(event) {
@@ -859,10 +1137,36 @@ function documentManager() {
             });
 
             this.selectedFiles = [...this.selectedFiles, ...validFiles];
+            
+            // Show language selector and metadata form if files are selected
+            if (this.selectedFiles.length > 0) {
+                this.showLanguageSelector = true;
+                this.showMetadataForm = true;
+            }
         },
 
         removeFile(index) {
             this.selectedFiles.splice(index, 1);
+            if (this.selectedFiles.length === 0) {
+                this.showLanguageSelector = false;
+                this.showMetadataForm = false;
+                this.resetMetadataForm();
+            }
+        },
+
+        resetMetadataForm() {
+            this.documentMetadata = {
+                title: '',
+                author: '',
+                source: '',
+                publication_date: '',
+                category: 'other',
+                description: '',
+                tags: '',
+                document_type: 'other',
+                geographic_scope: '',
+                target_audience: ''
+            };
         },
 
         async uploadFiles() {
@@ -877,9 +1181,17 @@ function documentManager() {
                 for (let i = 0; i < this.selectedFiles.length; i++) {
                     const file = this.selectedFiles[i];
                     const formData = new FormData();
-                    formData.append('document', file);
+                    formData.append('file', file);
+                    formData.append('language', this.selectedLanguage);
+                    
+                    // Add metadata
+                    Object.keys(this.documentMetadata).forEach(key => {
+                        if (this.documentMetadata[key]) {
+                            formData.append(key, this.documentMetadata[key]);
+                        }
+                    });
 
-                    const response = await fetch('/api/documents/upload/', {
+                    const response = await fetch(`${API_BASE}/api/embed/`, {
                         method: 'POST',
                         body: formData
                     });
@@ -887,14 +1199,22 @@ function documentManager() {
                     this.uploadProgress = Math.round(((i + 1) / this.selectedFiles.length) * 100);
 
                     if (!response.ok) {
-                        throw new Error(`Failed to upload ${file.name}`);
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `Failed to upload ${file.name}`);
                     }
+
+                    const result = await response.json();
+                    console.log(`Upload result for ${file.name}:`, result);
                 }
 
                 this.uploadSuccess = true;
                 this.uploadStatus = `Successfully uploaded ${this.selectedFiles.length} document(s) and created embeddings.`;
                 this.selectedFiles = [];
+                this.showLanguageSelector = false;
+                this.showMetadataForm = false;
+                this.resetMetadataForm();
                 await this.loadDocuments();
+                await this.loadDocumentStats();
 
             } catch (error) {
                 console.error('Upload error:', error);
@@ -912,47 +1232,244 @@ function documentManager() {
 
         async loadDocuments() {
             try {
-                // For demo purposes, using existing documents
-                this.documents = [
-                    {
-                        id: 1,
-                        name: 'Advancing-Digital-Inclusion-for-Persons-with-Disabilities-in-Africa.pdf',
-                        uploaded_at: '2025-01-15T10:30:00Z',
-                        embedded: true
-                    },
-                    {
-                        id: 2,
-                        name: 'ssrn-5151540.docx',
-                        uploaded_at: '2025-01-15T10:30:00Z',
-                        embedded: true
-                    }
-                ];
-                
-                this.embeddedCount = this.documents.filter(doc => doc.embedded).length;
-                this.totalChunks = this.embeddedCount * 15; // Estimated chunks per document
+                const response = await fetch(`${API_BASE}/api/documents/`);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.documents = data.documents || [];
+                    this.embeddedCount = data.embedded_count || 0;
+                    
+                    // Initialize showDetails property for each document
+                    this.documents.forEach(doc => {
+                        doc.showDetails = false;
+                    });
+                    
+                    console.log('Documents loaded:', this.documents.length);
+                } else {
+                    console.error('Failed to load documents');
+                    // Fallback to demo data
+                    this.documents = [
+                        {
+                            id: 1,
+                            title: 'Advancing Digital Inclusion for Persons with Disabilities in Africa',
+                            file_name: 'Advancing-Digital-Inclusion-for-Persons-with-Disabilities-in-Africa.pdf',
+                            uploaded_at: '2025-01-15T10:30:00Z',
+                            embedded_chunks: 35,
+                            is_embedded: true,
+                            language: 'en',
+                            file_size: 2048576,
+                            author: 'Digital Rights Foundation',
+                            source: 'African Union',
+                            category: 'accessibility',
+                            category_display: 'Accessibility',
+                            showDetails: false
+                        }
+                    ];
+                    this.embeddedCount = this.documents.filter(doc => doc.is_embedded).length;
+                }
             } catch (error) {
                 console.error('Error loading documents:', error);
+                this.documents = [];
+            }
+        },
+
+        editDocument(doc) {
+            this.editingDocument = { ...doc };
+            this.showEditModal = true;
+        },
+
+        async saveDocumentEdit() {
+            if (!this.editingDocument) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/documents/${this.editingDocument.id}/update/`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(this.editingDocument)
+                });
+
+                if (response.ok) {
+                    await this.loadDocuments();
+                    this.showEditModal = false;
+                    this.editingDocument = null;
+                    
+                    this.uploadStatus = 'Document updated successfully';
+                    this.uploadSuccess = true;
+                    setTimeout(() => {
+                        this.uploadStatus = '';
+                    }, 3000);
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to update document');
+                }
+            } catch (error) {
+                console.error('Error updating document:', error);
+                this.uploadStatus = `Failed to update document: ${error.message}`;
+                this.uploadSuccess = false;
+                setTimeout(() => {
+                    this.uploadStatus = '';
+                }, 5000);
+            }
+        },
+
+        cancelEdit() {
+            this.showEditModal = false;
+            this.editingDocument = null;
+        },
+
+        getCategoryOptions() {
+            return [
+                { value: 'internet_freedom', label: 'Internet Freedom' },
+                { value: 'accessibility', label: 'Accessibility' },
+                { value: 'gender_violence', label: 'Technology Facilitated Gender-Based Violence' },
+                { value: 'digital_inclusion', label: 'Digital Inclusion' },
+                { value: 'policy_governance', label: 'Policy & Governance' },
+                { value: 'cybersecurity', label: 'Cybersecurity' },
+                { value: 'data_protection', label: 'Data Protection & Privacy' },
+                { value: 'digital_economy', label: 'Digital Economy' },
+                { value: 'education_literacy', label: 'Digital Education & Literacy' },
+                { value: 'infrastructure', label: 'Digital Infrastructure' },
+                { value: 'research_reports', label: 'Research & Reports' },
+                { value: 'legal_frameworks', label: 'Legal Frameworks' },
+                { value: 'other', label: 'Other' }
+            ];
+        },
+
+        getDocumentTypeOptions() {
+            return [
+                { value: 'report', label: 'Report' },
+                { value: 'policy', label: 'Policy Document' },
+                { value: 'research', label: 'Research Paper' },
+                { value: 'guideline', label: 'Guidelines' },
+                { value: 'case_study', label: 'Case Study' },
+                { value: 'presentation', label: 'Presentation' },
+                { value: 'manual', label: 'Manual/Handbook' },
+                { value: 'legislation', label: 'Legislation' },
+                { value: 'other', label: 'Other' }
+            ];
+        },
+
+        async loadDocumentStats() {
+            try {
+                const response = await fetch(`${API_BASE}/api/documents/stats/`);
+                if (response.ok) {
+                    this.documentStats = await response.json();
+                    this.totalChunks = this.documentStats.embedding_stats?.total_chunks || 0;
+                    console.log('Document stats loaded:', this.documentStats);
+                } else {
+                    console.error('Failed to load document stats');
+                }
+            } catch (error) {
+                console.error('Error loading document stats:', error);
             }
         },
 
         async deleteDocument(docId) {
             if (confirm('Are you sure you want to delete this document? This will also remove all its embeddings.')) {
                 try {
-                    // In a real implementation, you'd call a delete API
-                    this.documents = this.documents.filter(doc => doc.id !== docId);
-                    this.embeddedCount = this.documents.filter(doc => doc.embedded).length;
-                    this.totalChunks = this.embeddedCount * 15;
+                    const response = await fetch(`${API_BASE}/api/documents/${docId}/delete/`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        console.log('Delete result:', result);
+                        
+                        // Refresh the document list
+                        await this.loadDocuments();
+                        await this.loadDocumentStats();
+                        
+                        // Show success message
+                        this.uploadStatus = result.message;
+                        this.uploadSuccess = true;
+                        setTimeout(() => {
+                            this.uploadStatus = '';
+                        }, 3000);
+                    } else {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Failed to delete document');
+                    }
                 } catch (error) {
                     console.error('Error deleting document:', error);
+                    this.uploadStatus = `Failed to delete document: ${error.message}`;
+                    this.uploadSuccess = false;
+                    setTimeout(() => {
+                        this.uploadStatus = '';
+                    }, 5000);
                 }
             }
         },
 
+        async reEmbedDocument(docId) {
+            if (confirm('This will re-process the document and recreate its embeddings. Continue?')) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/documents/${docId}/re-embed/`, {
+                        method: 'POST'
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        console.log('Re-embed result:', result);
+                        
+                        // Refresh the document list
+                        await this.loadDocuments();
+                        await this.loadDocumentStats();
+                        
+                        // Show success message
+                        this.uploadStatus = result.message;
+                        this.uploadSuccess = true;
+                        setTimeout(() => {
+                            this.uploadStatus = '';
+                        }, 3000);
+                    } else {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Failed to re-embed document');
+                    }
+                } catch (error) {
+                    console.error('Error re-embedding document:', error);
+                    this.uploadStatus = `Failed to re-embed document: ${error.message}`;
+                    this.uploadSuccess = false;
+                    setTimeout(() => {
+                        this.uploadStatus = '';
+                    }, 5000);
+                }
+            }
+        },
+
+        getLanguageName(code) {
+            const languages = {
+                'en': 'English',
+                'fr': 'French',
+                'sw': 'Swahili',
+                'am': 'Amharic'
+            };
+            return languages[code] || code.toUpperCase();
+        },
+
+        getFileTypeIcon(fileName) {
+            const extension = fileName.split('.').pop().toLowerCase();
+            switch (extension) {
+                case 'pdf':
+                    return 'fas fa-file-pdf text-red-600';
+                case 'docx':
+                case 'doc':
+                    return 'fas fa-file-word text-blue-600';
+                case 'txt':
+                    return 'fas fa-file-alt text-gray-600';
+                default:
+                    return 'fas fa-file text-gray-600';
+            }
+        },
+
         formatDate(dateString) {
+            if (!dateString) return '';
             return new Date(dateString).toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'short',
-                day: 'numeric'
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
             });
         },
 
@@ -1084,3 +1601,19 @@ function settingsManager() {
         }
     };
 }
+
+// Register all Alpine.js components
+document.addEventListener('alpine:init', () => {
+    console.log('Registering Alpine.js components...');
+    
+    // Register all components
+    Alpine.data('appController', appController);
+    Alpine.data('dashboard', dashboard);
+    Alpine.data('fileUpload', fileUpload);
+    Alpine.data('quickAsk', quickAsk);
+    Alpine.data('chatInterface', chatInterface);
+    Alpine.data('documentManager', documentManager);
+    Alpine.data('settingsManager', settingsManager);
+    
+    console.log('All Alpine.js components registered successfully');
+});

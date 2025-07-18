@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}GPT-DRAA{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/dashboard.css">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="min-h-screen flex">
+        
+        <!-- Sidebar Navigation -->
+        <div class="fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg border-r border-gray-200">
+            <!-- Logo Header -->
+            <div class="flex items-center justify-center h-16 px-4 border-b border-gray-200">
+                <h1 class="text-xl font-bold text-gray-900">
+                    <i class="fas fa-brain text-blue-600 mr-2"></i>
+                    GPT-DRAA
+                </h1>
+            </div>
+
+            <!-- Navigation Menu -->
+            <nav class="mt-8 px-4">
+                <div class="space-y-2">
+                    <!-- Dashboard -->
+                    <a href="/api/" 
+                       class="group flex items-center px-3 py-3 text-sm font-medium rounded-l-md transition-colors w-full text-left {% if request.resolver_match.url_name == 'dashboard_main' %}bg-blue-50 text-blue-700 border-r-2 border-blue-600{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900{% endif %}">
+                        <i class="fas fa-chart-line mr-3 text-lg w-5"></i>
+                        Dashboard
+                    </a>
+
+                    <!-- AI Chat -->
+                    <a href="/api/chat/" 
+                       class="group flex items-center px-3 py-3 text-sm font-medium rounded-l-md transition-colors w-full text-left {% if request.resolver_match.url_name == 'chat_view' %}bg-blue-50 text-blue-700 border-r-2 border-blue-600{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900{% endif %}">
+                        <i class="fas fa-comments mr-3 text-lg w-5"></i>
+                        AI Chat
+                    </a>
+
+                    <!-- Documents -->
+                    <a href="/api/documents/" 
+                       class="group flex items-center px-3 py-3 text-sm font-medium rounded-l-md transition-colors w-full text-left {% if request.resolver_match.url_name == 'documents_view' %}bg-blue-50 text-blue-700 border-r-2 border-blue-600{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900{% endif %}">
+                        <i class="fas fa-folder mr-3 text-lg w-5"></i>
+                        Documents
+                    </a>
+
+                    <!-- Settings -->
+                    <a href="/api/settings/" 
+                       class="group flex items-center px-3 py-3 text-sm font-medium rounded-l-md transition-colors w-full text-left {% if request.resolver_match.url_name == 'settings_view' %}bg-blue-50 text-blue-700 border-r-2 border-blue-600{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900{% endif %}">
+                        <i class="fas fa-cog mr-3 text-lg w-5"></i>
+                        Settings
+                    </a>
+                </div>
+            </nav>
+
+            <!-- Status Section -->
+            <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
+                <!-- Model Status -->
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-medium text-gray-500">MODEL STATUS</span>
+                    <div class="flex items-center space-x-2">
+                        <div class="h-2 w-2 bg-green-400 rounded-full animate-pulse"></div>
+                        <span class="text-xs text-green-600 font-medium">Online</span>
+                    </div>
+                </div>
+                
+                <!-- TinyLlama Info -->
+                <div class="text-xs text-gray-500 mb-3">
+                    <div class="flex items-center">
+                        <i class="fas fa-robot mr-2"></i>
+                        TinyLlama 1.1B
+                    </div>
+                    <div class="flex items-center mt-1">
+                        <i class="fas fa-database mr-2"></i>
+                        ChromaDB Active
+                    </div>
+                </div>
+
+                <!-- Refresh Button -->
+                <button 
+                    id="refreshBtn"
+                    onclick="location.reload()" 
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-md text-xs font-medium transition-colors flex items-center justify-center"
+                >
+                    <i class="fas fa-sync-alt mr-2"></i>Refresh Data
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 ml-64 bg-gray-50 min-h-screen">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <script src="/static/dashboard.js"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

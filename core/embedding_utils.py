@@ -34,7 +34,12 @@ def embed_and_store(file_name, language_code):
             documents=[chunk],
             embeddings=[emb.tolist()],
             ids=[doc_id],
-            metadatas=[{"language": language_code}]
+            metadatas=[{
+                "language": language_code,
+                "source_document": file_name,
+                "chunk_index": i,
+                "chunk_size": len(chunk)
+            }]
         )
         print(f"✅ Added chunk ID: {doc_id} (first 100 chars): {chunk[:100]}...")
 
@@ -45,7 +50,7 @@ def embed_and_store(file_name, language_code):
     print(f"🧩 Total Chunks Embedded: {len(chunks)}")
     print(f"🗂️ Stored in Collection: legal_docs")
     print(f"📁 ChromaDB Path: {os.path.abspath('chroma_data')}")
-    chroma_client.persist()  # ✅ Save to disk
+    # PersistentClient auto-persists, no need to call persist()
     return f"✅ Embedded {len(chunks)} chunks from: {file_name}"
 
 # Optional: debug what's already in the DB

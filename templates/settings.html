@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Settings - GPT-DRAA{% endblock %}
+
+{% block content %}
+<div x-data="settingsManager()">
+    <div class="p-8">
+        
+        <!-- Page Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Settings</h1>
+            <p class="text-gray-600 mt-2">Configure your AI model and system preferences</p>
+        </div>
+
+        <div class="max-w-4xl space-y-8">
+            <!-- Model Configuration -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-xl font-semibold text-gray-900 mb-4">AI Model Configuration</h3>
+                
+                <div class="space-y-6">
+                    <!-- Model Status -->
+                    <div class="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                                <i class="fas fa-check text-white text-sm"></i>
+                            </div>
+                            <div>
+                                <p class="font-medium text-green-900">TinyLlama Model Connected</p>
+                                <p class="text-sm text-green-700">tinyllama-1.1b-chat-v1.0 @ localhost:1234</p>
+                            </div>
+                        </div>
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                            Online
+                        </span>
+                    </div>
+
+                    <!-- ChromaDB Status -->
+                    <div class="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                                <i class="fas fa-database text-white text-sm"></i>
+                            </div>
+                            <div>
+                                <p class="font-medium text-blue-900">ChromaDB Connected</p>
+                                <p class="text-sm text-blue-700">Vector database for document embeddings</p>
+                            </div>
+                        </div>
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                            Active
+                        </span>
+                    </div>
+
+                    <!-- Model Settings -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Model Temperature</label>
+                            <input type="range" min="0" max="1" step="0.1" value="0.7" 
+                                   class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            <div class="flex justify-between text-xs text-gray-500 mt-1">
+                                <span>Focused (0.0)</span>
+                                <span>Creative (1.0)</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Max Response Length</label>
+                            <select class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <option value="512">Short (512 tokens)</option>
+                                <option value="1024" selected>Medium (1024 tokens)</option>
+                                <option value="2048">Long (2048 tokens)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Preferences -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-xl font-semibold text-gray-900 mb-4">System Preferences</h3>
+                
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-medium text-gray-900">Auto-refresh Dashboard</p>
+                            <p class="text-sm text-gray-500">Automatically refresh monitoring data every 30 seconds</p>
+                        </div>
+                        <button class="relative inline-flex h-6 w-11 items-center rounded-full bg-blue-600">
+                            <span class="translate-x-6 inline-block h-4 w-4 transform rounded-full bg-white transition"></span>
+                        </button>
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-medium text-gray-900">Enable Notifications</p>
+                            <p class="text-sm text-gray-500">Show notifications for system alerts and updates</p>
+                        </div>
+                        <button class="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-200">
+                            <span class="translate-x-1 inline-block h-4 w-4 transform rounded-full bg-white transition"></span>
+                        </button>
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-medium text-gray-900">Dark Mode</p>
+                            <p class="text-sm text-gray-500">Switch to dark theme for better night viewing</p>
+                        </div>
+                        <button class="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-200">
+                            <span class="translate-x-1 inline-block h-4 w-4 transform rounded-full bg-white transition"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Management -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-xl font-semibold text-gray-900 mb-4">Data Management</h3>
+                
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                        <div>
+                            <p class="font-medium text-gray-900">Clear Chat History</p>
+                            <p class="text-sm text-gray-500">Remove all chat messages and conversations</p>
+                        </div>
+                        <button class="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-800 border border-red-300 rounded-md hover:bg-red-50">
+                            Clear History
+                        </button>
+                    </div>
+                    
+                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                        <div>
+                            <p class="font-medium text-gray-900">Reset Vector Database</p>
+                            <p class="text-sm text-gray-500">Clear all embedded documents and rebuild index</p>
+                        </div>
+                        <button class="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-800 border border-red-300 rounded-md hover:bg-red-50">
+                            Reset Database
+                        </button>
+                    </div>
+                    
+                    <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                        <div>
+                            <p class="font-medium text-gray-900">Export System Data</p>
+                            <p class="text-sm text-gray-500">Download monitoring data and analytics reports</p>
+                        </div>
+                        <button class="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 border border-blue-300 rounded-md hover:bg-blue-50">
+                            Export Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('settingsManager', () => ({
+        init() {
+            console.log('Settings page initialized');
+        }
+    }));
+});
+</script>
+{% endblock %}

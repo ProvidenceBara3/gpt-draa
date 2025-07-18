@@ -1,0 +1,560 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Documents - GPT-DRAA{% endblock %}
+
+{% block content %}
+<div x-data="documentManager()">
+    <div class="p-8">
+        
+        <!-- Page Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Document Management</h1>
+            <p class="text-gray-600 mt-2">Upload and manage documents for your AI knowledge base</p>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+            <!-- Upload Section -->
+            <div class="xl:col-span-2 space-y-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h3 class="text-xl font-semibold text-gray-900 mb-4">Upload New Documents</h3>
+                    
+                    <!-- Large Upload Area -->
+                    <div 
+                        @dragover.prevent
+                        @drop.prevent="handleDrop($event)"
+                        @click="$refs.fileInput.click()"
+                        class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-blue-400 transition-colors mb-6"
+                        :class="isDragging ? 'border-blue-400 bg-blue-50' : ''"
+                        @dragenter.prevent="isDragging = true"
+                        @dragleave.prevent="isDragging = false"
+                    >
+                        <div class="space-y-4">
+                            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                                <i class="fas fa-cloud-upload-alt text-3xl text-gray-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-xl font-medium text-gray-900">Drop files here or click to upload</p>
+                                <p class="text-gray-500 mt-2">Supports PDF, DOCX, TXT files up to 10MB each</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <input 
+                        type="file" 
+                        x-ref="fileInput"
+                        @change="handleFileSelect($event)"
+                        multiple
+                        accept=".pdf,.docx,.txt"
+                        class="hidden"
+                    >
+                    
+                    <!-- Selected Files -->
+                    <div x-show="selectedFiles.length > 0" class="space-y-3 mb-6">
+                        <h4 class="font-medium text-gray-900">Selected Files:</h4>
+                        <template x-for="(file, index) in selectedFiles" :key="index">
+                            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <div class="flex items-center space-x-3">
+                                    <i class="fas fa-file text-blue-600 text-lg"></i>
+                                    <div>
+                                        <p class="font-medium text-gray-900" x-text="file.name"></p>
+                                        <p class="text-sm text-gray-500" x-text="formatFileSize(file.size)"></p>
+                                    </div>
+                                </div>
+                                <button @click="removeFile(index)" class="text-red-600 hover:text-red-800 p-2">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                    
+                    <!-- Language Selection -->
+                    <div x-show="showLanguageSelector" class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <h4 class="font-medium text-gray-900 mb-3">Select Document Language:</h4>
+                        <div class="grid grid-cols-2 gap-3">
+                            <label class="flex items-center p-3 bg-white rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors"
+                                   :class="selectedLanguage === 'en' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+                                <input type="radio" x-model="selectedLanguage" value="en" class="sr-only">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center"
+                                         :class="selectedLanguage === 'en' ? 'border-blue-500' : 'border-gray-300'">
+                                        <div x-show="selectedLanguage === 'en'" class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                    </div>
+                                    <span class="font-medium text-gray-900">English</span>
+                                </div>
+                            </label>
+                            <label class="flex items-center p-3 bg-white rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors"
+                                   :class="selectedLanguage === 'fr' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+                                <input type="radio" x-model="selectedLanguage" value="fr" class="sr-only">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center"
+                                         :class="selectedLanguage === 'fr' ? 'border-blue-500' : 'border-gray-300'">
+                                        <div x-show="selectedLanguage === 'fr'" class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                    </div>
+                                    <span class="font-medium text-gray-900">Français</span>
+                                </div>
+                            </label>
+                            <label class="flex items-center p-3 bg-white rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors"
+                                   :class="selectedLanguage === 'sw' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+                                <input type="radio" x-model="selectedLanguage" value="sw" class="sr-only">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center"
+                                         :class="selectedLanguage === 'sw' ? 'border-blue-500' : 'border-gray-300'">
+                                        <div x-show="selectedLanguage === 'sw'" class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                    </div>
+                                    <span class="font-medium text-gray-900">Swahili</span>
+                                </div>
+                            </label>
+                            <label class="flex items-center p-3 bg-white rounded-lg border cursor-pointer hover:bg-gray-50 transition-colors"
+                                   :class="selectedLanguage === 'am' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+                                <input type="radio" x-model="selectedLanguage" value="am" class="sr-only">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center"
+                                         :class="selectedLanguage === 'am' ? 'border-blue-500' : 'border-gray-300'">
+                                        <div x-show="selectedLanguage === 'am'" class="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                    </div>
+                                    <span class="font-medium text-gray-900">አማርኛ</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Document Metadata Form -->
+                    <div x-show="showMetadataForm" class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h4 class="font-medium text-gray-900 mb-4">Document Information</h4>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Title -->
+                            <div class="md:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                                <input type="text" x-model="documentMetadata.title" 
+                                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                                       placeholder="Document title">
+                            </div>
+                            
+                            <!-- Author and Source -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Author</label>
+                                <input type="text" x-model="documentMetadata.author" 
+                                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                                       placeholder="Author or organization">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Source</label>
+                                <input type="text" x-model="documentMetadata.source" 
+                                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                                       placeholder="Publisher or source organization">
+                            </div>
+                            
+                            <!-- Category and Document Type -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                                <select x-model="documentMetadata.category" 
+                                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900">
+                                    <option value="internet_freedom">Internet Freedom</option>
+                                    <option value="accessibility">Accessibility</option>
+                                    <option value="gender_violence">Technology Facilitated Gender-Based Violence</option>
+                                    <option value="digital_inclusion">Digital Inclusion</option>
+                                    <option value="policy_governance">Policy & Governance</option>
+                                    <option value="cybersecurity">Cybersecurity</option>
+                                    <option value="data_protection">Data Protection & Privacy</option>
+                                    <option value="digital_economy">Digital Economy</option>
+                                    <option value="education_literacy">Digital Education & Literacy</option>
+                                    <option value="infrastructure">Digital Infrastructure</option>
+                                    <option value="research_reports">Research & Reports</option>
+                                    <option value="legal_frameworks">Legal Frameworks</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Document Type</label>
+                                <select x-model="documentMetadata.document_type" 
+                                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900">
+                                    <option value="report">Report</option>
+                                    <option value="policy">Policy Document</option>
+                                    <option value="research">Research Paper</option>
+                                    <option value="guideline">Guidelines</option>
+                                    <option value="case_study">Case Study</option>
+                                    <option value="presentation">Presentation</option>
+                                    <option value="manual">Manual/Handbook</option>
+                                    <option value="legislation">Legislation</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Geographic Scope and Publication Date -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Geographic Scope</label>
+                                <input type="text" x-model="documentMetadata.geographic_scope" 
+                                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                                       placeholder="e.g., Kenya, East Africa, Global">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Publication Date</label>
+                                <input type="date" x-model="documentMetadata.publication_date" 
+                                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900">
+                            </div>
+                            
+                            <!-- Target Audience -->
+                            <div class="md:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Target Audience</label>
+                                <input type="text" x-model="documentMetadata.target_audience" 
+                                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                                       placeholder="e.g., Policymakers, Researchers, Civil Society">
+                            </div>
+                            
+                            <!-- Description -->
+                            <div class="md:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                <textarea x-model="documentMetadata.description" rows="3"
+                                          class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                                          placeholder="Brief description of the document content"></textarea>
+                            </div>
+                            
+                            <!-- Tags -->
+                            <div class="md:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+                                <input type="text" x-model="documentMetadata.tags" 
+                                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900 placeholder-gray-500"
+                                       placeholder="Comma-separated tags (e.g., accessibility, policy, research)">
+                                <p class="text-xs text-gray-500 mt-1">Separate tags with commas</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Upload Button -->
+                    <button 
+                        @click="uploadFiles()"
+                        :disabled="selectedFiles.length === 0 || isUploading"
+                        class="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-medium py-3 px-6 rounded-lg transition-colors text-lg"
+                    >
+                        <span x-show="!isUploading">
+                            <i class="fas fa-upload mr-2"></i>Upload & Embed Documents
+                        </span>
+                        <span x-show="isUploading">
+                            <i class="fas fa-spinner fa-spin mr-2"></i>Processing Documents...
+                        </span>
+                    </button>
+                    
+                    <!-- Progress Bar -->
+                    <div x-show="isUploading" class="mt-4">
+                        <div class="w-full bg-gray-200 rounded-full h-3">
+                            <div class="bg-green-600 h-3 rounded-full transition-all duration-300" 
+                                 :style="`width: ${uploadProgress}%`"></div>
+                        </div>
+                        <p class="text-sm text-gray-600 mt-2 text-center" x-text="`${uploadProgress}% complete`"></p>
+                    </div>
+                    
+                    <!-- Upload Status -->
+                    <div x-show="uploadStatus" class="mt-4 p-4 rounded-lg" 
+                         :class="uploadSuccess ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'">
+                        <p x-text="uploadStatus"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Document Library Section -->
+            <div class="space-y-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-semibold text-gray-900">Document Library</h3>
+                        <button @click="loadDocuments(); loadDocumentStats()" class="text-blue-600 hover:text-blue-800 font-medium">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+                    
+                    <!-- Document List -->
+                    <div class="space-y-3 max-h-96 overflow-y-auto">
+                        <template x-for="doc in documents" :key="doc.id">
+                            <div class="border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                                <!-- Main Document Info -->
+                                <div class="flex items-center justify-between p-4">
+                                    <div class="flex items-center space-x-4 flex-1 min-w-0">
+                                        <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                            <i :class="getFileTypeIcon(doc.file_name)"></i>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <div class="flex items-center space-x-2">
+                                                <h4 class="font-medium text-gray-900 truncate" x-text="doc.title || doc.file_name"></h4>
+                                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                                                      x-text="getLanguageName(doc.language)"></span>
+                                            </div>
+                                            <div class="flex items-center space-x-3 text-sm text-gray-500 mt-1">
+                                                <span x-show="doc.author" x-text="'By: ' + doc.author"></span>
+                                                <span x-show="doc.category_display" class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800"
+                                                      x-text="doc.category_display"></span>
+                                            </div>
+                                            <div class="flex items-center space-x-4 text-sm text-gray-400 mt-1">
+                                                <span x-text="'Uploaded: ' + formatDate(doc.uploaded_at)"></span>
+                                                <span x-text="formatFileSize(doc.file_size)"></span>
+                                                <span x-show="doc.embedded_chunks" x-text="doc.embedded_chunks + ' chunks'"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center space-x-3">
+                                        <span x-show="doc.is_embedded || doc.embedded_chunks > 0" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                            <i class="fas fa-check mr-1"></i>Embedded
+                                        </span>
+                                        <span x-show="!doc.is_embedded && !doc.embedded_chunks" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                            <i class="fas fa-clock mr-1"></i>Pending
+                                        </span>
+                                        
+                                        <!-- Toggle Details Button -->
+                                        <button @click="doc.showDetails = !doc.showDetails" 
+                                                class="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100">
+                                            <i class="fas" :class="doc.showDetails ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                                        </button>
+                                        
+                                        <!-- Action Dropdown -->
+                                        <div class="relative" x-data="{ showDropdown: false }">
+                                            <button @click="showDropdown = !showDropdown" 
+                                                    class="text-gray-600 hover:text-gray-800 p-2 rounded-lg hover:bg-gray-100">
+                                                <i class="fas fa-ellipsis-v"></i>
+                                            </button>
+                                            
+                                            <div x-show="showDropdown" 
+                                                 @click.away="showDropdown = false"
+                                                 x-transition:enter="transition ease-out duration-200"
+                                                 x-transition:enter-start="opacity-0 scale-95"
+                                                 x-transition:enter-end="opacity-100 scale-100"
+                                                 x-transition:leave="transition ease-in duration-150"
+                                                 x-transition:leave-start="opacity-100 scale-100"
+                                                 x-transition:leave-end="opacity-0 scale-95"
+                                                 class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                                                
+                                                <button @click="editDocument(doc); showDropdown = false"
+                                                        class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                                    <i class="fas fa-edit mr-2 text-blue-600"></i>Edit Details
+                                                </button>
+                                                
+                                                <button @click="reEmbedDocument(doc.id); showDropdown = false"
+                                                        class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                                    <i class="fas fa-redo mr-2 text-green-600"></i>Re-embed
+                                                </button>
+                                                
+                                                <button @click="deleteDocument(doc.id); showDropdown = false"
+                                                        class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-b-lg">
+                                                    <i class="fas fa-trash mr-2"></i>Delete
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Expanded Details -->
+                                <div x-show="doc.showDetails" x-transition:enter="transition ease-out duration-300"
+                                     x-transition:enter-start="opacity-0 transform -translate-y-2"
+                                     x-transition:enter-end="opacity-100 transform translate-y-0"
+                                     class="px-4 pb-4 border-t border-gray-100">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
+                                        <div x-show="doc.source">
+                                            <span class="text-xs font-medium text-gray-500">Source</span>
+                                            <p class="text-sm text-gray-900" x-text="doc.source"></p>
+                                        </div>
+                                        <div x-show="doc.document_type">
+                                            <span class="text-xs font-medium text-gray-500">Type</span>
+                                            <p class="text-sm text-gray-900" x-text="doc.document_type"></p>
+                                        </div>
+                                        <div x-show="doc.geographic_scope">
+                                            <span class="text-xs font-medium text-gray-500">Geographic Scope</span>
+                                            <p class="text-sm text-gray-900" x-text="doc.geographic_scope"></p>
+                                        </div>
+                                        <div x-show="doc.target_audience">
+                                            <span class="text-xs font-medium text-gray-500">Target Audience</span>
+                                            <p class="text-sm text-gray-900" x-text="doc.target_audience"></p>
+                                        </div>
+                                        <div x-show="doc.publication_date">
+                                            <span class="text-xs font-medium text-gray-500">Publication Date</span>
+                                            <p class="text-sm text-gray-900" x-text="formatDate(doc.publication_date)"></p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div x-show="doc.description" class="mt-3">
+                                        <span class="text-xs font-medium text-gray-500">Description</span>
+                                        <p class="text-sm text-gray-900 mt-1" x-text="doc.description"></p>
+                                    </div>
+                                    
+                                    <div x-show="doc.tags_list && doc.tags_list.length > 0" class="mt-3">
+                                        <span class="text-xs font-medium text-gray-500">Tags</span>
+                                        <div class="flex flex-wrap gap-1 mt-1">
+                                            <template x-for="tag in doc.tags_list">
+                                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800"
+                                                      x-text="tag"></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                        
+                        <!-- Empty State -->
+                        <div x-show="documents.length === 0" class="text-center py-12">
+                            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i class="fas fa-folder-open text-3xl text-gray-400"></i>
+                            </div>
+                            <h4 class="text-lg font-medium text-gray-900 mb-2">No documents yet</h4>
+                            <p class="text-gray-500">Upload your first document to get started</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Document Stats -->
+                    <div class="mt-6 pt-6 border-t border-gray-200">
+                        <div class="grid grid-cols-3 gap-4 text-center">
+                            <div>
+                                <p class="text-2xl font-bold text-blue-600" x-text="documents.length"></p>
+                                <p class="text-sm text-gray-500">Total Documents</p>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-bold text-green-600" x-text="embeddedCount"></p>
+                                <p class="text-sm text-gray-500">Embedded</p>
+                            </div>
+                            <div>
+                                <p class="text-2xl font-bold text-purple-600" x-text="totalChunks"></p>
+                                <p class="text-sm text-gray-500">Text Chunks</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Additional Stats -->
+                        <div x-show="documentStats.storage_stats" class="mt-4 pt-4 border-t border-gray-100">
+                            <div class="grid grid-cols-2 gap-4 text-center">
+                                <div>
+                                    <p class="text-lg font-semibold text-gray-800" 
+                                       x-text="formatFileSize(documentStats.storage_stats?.total_size || 0)"></p>
+                                    <p class="text-xs text-gray-500">Total Storage</p>
+                                </div>
+                                <div>
+                                    <p class="text-lg font-semibold text-gray-800" 
+                                       x-text="formatFileSize(documentStats.storage_stats?.avg_size || 0)"></p>
+                                    <p class="text-xs text-gray-500">Avg File Size</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Embedding Analytics Section -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h3 class="text-xl font-semibold text-gray-900 mb-6">Embedding Analytics</h3>
+                    
+                    <!-- Language Distribution -->
+                    <div x-show="documentStats.database_stats?.language_distribution" class="mb-6">
+                        <h4 class="font-medium text-gray-900 mb-3">Language Distribution</h4>
+                        <div class="space-y-2">
+                            <template x-for="lang in documentStats.database_stats?.language_distribution || []">
+                                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                    <div class="flex items-center space-x-3">
+                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                                              x-text="getLanguageName(lang.language)"></span>
+                                        <span class="text-sm text-gray-600" x-text="lang.count + ' documents'"></span>
+                                    </div>
+                                    <div class="text-sm font-medium text-gray-900" 
+                                         x-text="Math.round((lang.count / (documentStats.database_stats?.total_documents || 1)) * 100) + '%'"></div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    
+                    <!-- Chunk Distribution -->
+                    <div x-show="documentStats.embedding_stats?.chunk_distribution" class="mb-6">
+                        <h4 class="font-medium text-gray-900 mb-3">Chunk Distribution</h4>
+                        <div class="space-y-2 max-h-32 overflow-y-auto">
+                            <template x-for="chunk in documentStats.embedding_stats?.chunk_distribution || []">
+                                <div class="flex items-center justify-between text-sm">
+                                    <span class="text-gray-600 truncate flex-1 mr-3" x-text="chunk.document.split('/').pop()"></span>
+                                    <span class="font-medium text-gray-900" x-text="chunk.chunks + ' chunks'"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    
+                    <!-- System Health -->
+                    <div class="pt-4 border-t border-gray-200">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-gray-700">ChromaDB Status</span>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                                <span class="text-sm text-green-700">Active</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between mt-2">
+                            <span class="text-sm font-medium text-gray-700">Avg Chunks/Doc</span>
+                            <span class="text-sm text-gray-900" 
+                                  x-text="Math.round(documentStats.embedding_stats?.avg_chunks_per_doc || 0)"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<style>
+/* Enhanced form input visibility */
+input[type="text"], 
+input[type="date"], 
+input[type="email"],
+input[type="number"],
+textarea, 
+select {
+    background-color: #ffffff !important;
+    color: #1f2937 !important;
+    border: 1px solid #d1d5db !important;
+}
+
+input[type="text"]:focus, 
+input[type="date"]:focus, 
+input[type="email"]:focus,
+input[type="number"]:focus,
+textarea:focus, 
+select:focus {
+    background-color: #ffffff !important;
+    color: #1f2937 !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+}
+
+::placeholder {
+    color: #6b7280 !important;
+    opacity: 1 !important;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px white inset !important;
+    -webkit-text-fill-color: #1f2937 !important;
+}
+
+/* Enhanced radio button labels */
+label {
+    color: #1f2937 !important;
+}
+
+label .font-medium {
+    color: #1f2937 !important;
+}
+
+/* Ensure all text in forms is visible */
+.bg-white, .bg-gray-50, .bg-blue-50 {
+    color: #1f2937 !important;
+}
+
+/* Force visibility for spans and text elements */
+span.font-medium {
+    color: #1f2937 !important;
+}
+
+h4.font-medium {
+    color: #1f2937 !important;
+}
+</style>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('documentManager', documentManager);
+});
+</script>
+{% endblock %}

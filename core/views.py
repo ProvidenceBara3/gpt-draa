@@ -9,7 +9,7 @@ from rest_framework.decorators import parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
 from core.embedding_utils import embed_and_store, EMBEDDING_MODEL, collection
 from core.monitoring import PerformanceMonitor, PerformanceAnalyzer
-from core.models import QueryLog, SystemPerformanceMetrics
+from core.models import QueryLog, SystemPerformanceMetrics, UserAction
 from django.utils import timezone
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
@@ -38,7 +38,7 @@ def ask_view(request):
             search_start = time.time()
             results = collection.query(
                 query_embeddings=[query_embedding.tolist()],
-                n_results=5,  # Increased from 3 to 5 for better context
+                n_results=3,  # Reduced from 5 to 3 for TinyLlama
                 include=["documents", "metadatas", "distances"]  # Added distances for relevance scoring
             )
             monitor.record_search_time()
@@ -48,35 +48,25 @@ def ask_view(request):
             metadata_chunks = results.get('metadatas', [[]])[0]
             distances = results.get('distances', [[]])[0]
 
-            # Step 3: System prompt based on language
+            # Step 3: Simplified system prompt for TinyLlama
             system_prompt = {
-                'en': "You are an expert in African digital human rights and inclusion. Use the context below to provide a comprehensive, accurate answer in English. If the context doesn't contain relevant information, say so clearly.",
-                'fr': "Vous êtes un expert des droits numériques et de l'inclusion numérique en Afrique. Utilisez le contexte ci-dessous pour fournir une réponse complète et précise en français.",
-                'sw': "Wewe ni mtaalam wa haki za kidijitali na ujumuishaji wa kidijitali Afrika. Tumia muktadha hapa chini kutoa jibu kamili na sahihi kwa Kiswahili.",
-                'am': "አንተ በአፍሪካ የዲጂታል መብቶች እና ዲጂታል ማካተት ባለሙያ ነህ። በዚህ አውድ ላይ በመመስረት ሙሉ እና ትክክለኛ መልስ በአማርኛ ስጥ።"
-            }.get(language, 'Answer in English based on the provided context.')
+                'en': "You are an AI assistant. Answer the question about digital rights in Africa using the provided context. Be clear and concise.",
+                'fr': "Vous êtes un assistant IA. Répondez à la question sur les droits numériques en Afrique en utilisant le contexte fourni.",
+                'sw': "Wewe ni msaidizi wa AI. Jibu swali kuhusu haki za kidijitali Afrika kwa kutumia muktadha uliopiewa.",
+                'am': "አንተ የAI ረዳት ነህ። የተሰጠውን አውድ በመጠቀም ስለ አፍሪካ ዲጂታል መብቶች ጥያቄውን መልስ።"
+            }.get(language, 'Answer about digital rights in Africa using the context.')
 
-            # Step 4: Construct full prompt with retrieved context
+            # Step 4: Construct ultra-simplified prompt for TinyLlama
             if relevant_chunks:
-                # Format context with relevance scores
-                context_parts = []
-                for i, (chunk, distance) in enumerate(zip(relevant_chunks, distances), 1):
-                    # Convert distance to relevance score (lower distance = higher relevance)
-                    # For cosine distance: 0 = identical, 2 = opposite
-                    # For euclidean distance: normalize by converting to 0-1 scale
-                    if distance <= 2:  # Likely cosine distance
-                        relevance = max(0, 1 - (distance / 2))  # Scale 0-2 to 1-0
-                    else:  # Likely euclidean distance
-                        # Use exponential decay for euclidean distances
-                        relevance = 1 / (1 + distance)
-                    
-                    context_parts.append(f"[Context {i} - Relevance: {relevance:.3f}]\n{chunk}")
+                # Use only the first chunk and severely truncate it
+                best_chunk = relevant_chunks[0]
+                # Take only the first 150 characters to avoid overloading TinyLlama
+                truncated_chunk = best_chunk[:150].strip()
                 
-                context = "\n\n".join(context_parts)
-                full_prompt = f"{system_prompt}\n\nRelevant Context:\n{context}\n\nUser Question: {user_prompt}\n\nPlease provide a helpful answer based on the context above:"
+                # Ultra-simple prompt structure
+                full_prompt = f"Context: {truncated_chunk}\n\nQuestion: {user_prompt}\n\nBrief answer:"
             else:
-                context = "No relevant documents found in the database."
-                full_prompt = f"{system_prompt}\n\nNo specific context available. Please provide a general response to: {user_prompt}"
+                full_prompt = f"Question: {user_prompt}\n\nBrief answer about digital rights in Africa:"
 
             # Step 5: Send to LLM (e.g., Mistral)
             llm_start = time.time()
@@ -94,7 +84,7 @@ def ask_view(request):
                     relevance_scores.append(relevance)
 
             # Log the interaction for monitoring
-            monitor.log_query(
+            query_log_entry = monitor.log_query(
                 query_text=user_prompt,
                 language=language,
                 response_text=answer,
@@ -112,7 +102,8 @@ def ask_view(request):
                 "metadatas": metadata_chunks,
                 "relevance_scores": relevance_scores,
                 "query": user_prompt,
-                "language": language
+                "language": language,
+                "query_id": query_log_entry.id if query_log_entry else None  # Add query ID for feedback
             })
 
         except Exception as e:
@@ -156,12 +147,13 @@ def upload_and_embed_view(request):
         # Save file info to DB
         doc_instance = serializer.save()
         
-        # Build file path (MEDIA_ROOT/documents/filename)
-        file_path = doc_instance.file.name
+        # Extract just the filename from the full path (e.g., 'documents/file.pdf' -> 'file.pdf')
+        import os
+        file_name = os.path.basename(doc_instance.file.name)
         language = doc_instance.language
         
         # Trigger embedding
-        result = embed_and_store(file_path, language)
+        result = embed_and_store(file_name, language)
 
         return Response({
             "message": result,
@@ -170,7 +162,245 @@ def upload_and_embed_view(request):
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# Add monitoring views at the end of the file
+# Add document management views
+@api_view(['GET'])
+def list_documents(request):
+    """List all uploaded documents"""
+    try:
+        from .models import UploadedDocument
+        documents = UploadedDocument.objects.all().order_by('-uploaded_at')
+        serializer = UploadedDocumentSerializer(documents, many=True)
+        
+        # Add extra metadata
+        documents_data = []
+        for doc_data in serializer.data:
+            doc = UploadedDocument.objects.get(id=doc_data['id'])
+            
+            # Get file size
+            file_size = 0
+            try:
+                file_size = doc.file.size
+            except:
+                pass
+                
+            # Get embedding status from ChromaDB
+            embedded_chunks = 0
+            try:
+                # Check if document chunks exist in ChromaDB
+                results = collection.get(
+                    where={"source_document": {"$eq": doc.file.name}}
+                )
+                embedded_chunks = len(results['ids']) if results['ids'] else 0
+            except:
+                pass
+            
+            documents_data.append({
+                **doc_data,
+                'file_size': file_size,
+                'embedded_chunks': embedded_chunks,
+                'is_embedded': embedded_chunks > 0,
+                'file_name': doc.file.name.split('/')[-1] if doc.file.name else 'Unknown'
+            })
+        
+        return Response({
+            'documents': documents_data,
+            'total_count': len(documents_data),
+            'embedded_count': sum(1 for doc in documents_data if doc['is_embedded'])
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['DELETE'])
+def delete_document(request, doc_id):
+    """Delete a document and its embeddings"""
+    try:
+        from .models import UploadedDocument
+        import os
+        
+        # Get the document
+        document = UploadedDocument.objects.get(id=doc_id)
+        file_name = document.file.name
+        
+        # Delete embeddings from ChromaDB
+        try:
+            # Get all chunks for this document
+            results = collection.get(
+                where={"source_document": {"$eq": file_name}}
+            )
+            
+            if results['ids']:
+                collection.delete(ids=results['ids'])
+                print(f"Deleted {len(results['ids'])} chunks from ChromaDB for {file_name}")
+        except Exception as e:
+            print(f"Error deleting from ChromaDB: {e}")
+        
+        # Delete the physical file
+        try:
+            if document.file and os.path.exists(document.file.path):
+                os.remove(document.file.path)
+        except Exception as e:
+            print(f"Error deleting physical file: {e}")
+        
+        # Delete the database record
+        document.delete()
+        
+        return Response({
+            'message': f'Document {file_name} deleted successfully',
+            'deleted_chunks': len(results['ids']) if 'results' in locals() and results['ids'] else 0
+        })
+        
+    except UploadedDocument.DoesNotExist:
+        return Response({'error': 'Document not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['POST'])
+def re_embed_document(request, doc_id):
+    """Re-embed a document (useful if embedding failed)"""
+    try:
+        from .models import UploadedDocument
+        import os
+        
+        document = UploadedDocument.objects.get(id=doc_id)
+        # Extract just the filename from the full path (e.g., 'documents/file.pdf' -> 'file.pdf')
+        file_name = os.path.basename(document.file.name)
+        language = document.language
+        
+        # Re-trigger embedding
+        result = embed_and_store(file_name, language)
+        
+        return Response({
+            'message': f'Document re-embedded successfully: {result}',
+            'document_id': doc_id
+        })
+        
+    except UploadedDocument.DoesNotExist:
+        return Response({'error': 'Document not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+@api_view(['PUT'])
+def update_document(request, doc_id):
+    """Update document metadata"""
+    try:
+        from .models import UploadedDocument
+        
+        document = UploadedDocument.objects.get(id=doc_id)
+        
+        # Update fields from request data
+        updateable_fields = [
+            'title', 'author', 'source', 'publication_date', 'category',
+            'description', 'tags', 'document_type', 'geographic_scope',
+            'target_audience', 'processing_notes'
+        ]
+        
+        for field in updateable_fields:
+            if field in request.data:
+                setattr(document, field, request.data[field])
+        
+        document.save()
+        
+        # Return updated document data
+        serializer = UploadedDocumentSerializer(document)
+        return Response({
+            'message': 'Document updated successfully',
+            'document': serializer.data
+        })
+        
+    except UploadedDocument.DoesNotExist:
+        return Response({'error': 'Document not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+def document_stats(request):
+    """Get comprehensive document and embedding statistics"""
+    try:
+        from .models import UploadedDocument
+        from django.db.models import Count
+        
+        # Database stats
+        total_docs = UploadedDocument.objects.count()
+        
+        # Language distribution
+        language_stats = UploadedDocument.objects.values('language').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        # ChromaDB stats
+        total_chunks = 0
+        total_documents_embedded = 0
+        chunk_details = []
+        
+        try:
+            collection_info = collection.get()
+            total_chunks = len(collection_info['ids']) if collection_info['ids'] else 0
+            
+            # Get unique documents in ChromaDB
+            metadatas = collection_info.get('metadatas', [])
+            unique_documents = set()
+            
+            for metadata in metadatas:
+                if metadata and 'source_document' in metadata:
+                    unique_documents.add(metadata['source_document'])
+            
+            total_documents_embedded = len(unique_documents)
+            
+            # Get chunk distribution per document
+            chunk_distribution = {}
+            for metadata in metadatas:
+                if metadata and 'source_document' in metadata:
+                    doc_name = metadata['source_document']
+                    chunk_distribution[doc_name] = chunk_distribution.get(doc_name, 0) + 1
+            
+            chunk_details = [
+                {'document': doc, 'chunks': count} 
+                for doc, count in chunk_distribution.items()
+            ]
+            
+        except Exception as e:
+            print(f"Error getting ChromaDB stats: {e}")
+        
+        # File storage stats
+        storage_stats = {
+            'total_size': 0,
+            'avg_size': 0
+        }
+        
+        try:
+            documents = UploadedDocument.objects.all()
+            sizes = []
+            for doc in documents:
+                try:
+                    size = doc.file.size
+                    sizes.append(size)
+                except:
+                    pass
+            
+            if sizes:
+                storage_stats['total_size'] = sum(sizes)
+                storage_stats['avg_size'] = sum(sizes) / len(sizes)
+        except Exception as e:
+            print(f"Error calculating storage stats: {e}")
+        
+        return Response({
+            'database_stats': {
+                'total_documents': total_docs,
+                'language_distribution': list(language_stats)
+            },
+            'embedding_stats': {
+                'total_chunks': total_chunks,
+                'documents_embedded': total_documents_embedded,
+                'avg_chunks_per_doc': total_chunks / max(total_documents_embedded, 1),
+                'chunk_distribution': chunk_details
+            },
+            'storage_stats': storage_stats
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
 
 @api_view(["GET"])
 def monitoring_dashboard(request):
@@ -226,8 +456,9 @@ def rate_response(request):
     """Allow users to rate responses for quality evaluation"""
     try:
         query_id = request.data.get('query_id')
-        user_rating = request.data.get('user_rating')  # 1-5
+        user_rating = request.data.get('user_rating')  # 1-5 or 'up'/'down'
         response_relevance = request.data.get('response_relevance')  # 1-5
+        feedback_type = request.data.get('feedback_type', 'rating')  # 'rating', 'copy', 'regenerate'
         
         if not query_id:
             return Response({"error": "query_id is required"}, status=400)
@@ -235,15 +466,35 @@ def rate_response(request):
         try:
             query_log = QueryLog.objects.get(id=query_id)
             
-            if user_rating:
-                query_log.user_rating = user_rating
+            # Handle different feedback types
+            if feedback_type == 'rating':
+                if user_rating == 'up':
+                    query_log.user_rating = 5  # Convert 'up' to 5 stars
+                elif user_rating == 'down':
+                    query_log.user_rating = 1  # Convert 'down' to 1 star
+                elif isinstance(user_rating, int) and 1 <= user_rating <= 5:
+                    query_log.user_rating = user_rating
+            elif feedback_type == 'regenerate':
+                query_log.regeneration_count += 1
+                    
             if response_relevance:
                 query_log.response_relevance = response_relevance
                 
             query_log.save()
             
+            # Also log the action for analytics
+            UserAction.objects.create(
+                query_log=query_log,
+                action_type=feedback_type,
+                details={
+                    'user_rating': user_rating,
+                    'response_relevance': response_relevance,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+            
             return Response({
-                "message": "Rating saved successfully",
+                "message": "Feedback saved successfully",
                 "query_id": query_id,
                 "user_rating": query_log.user_rating,
                 "response_relevance": query_log.response_relevance
